@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Medly Web Rama - Multi-Bar</title>
+  <style>
+    body { font-family:sans-serif; text-align:center; background:#f0f0f0; }
+    h1 { margin-top:20px; }
+    #controls { margin:20px; }
+    select, button, input { font-size:16px; padding:6px 10px; margin:5px; }
+    #clickGrid, #seqGrid { display:inline-block; margin-top:20px; }
+    .row { display:flex; justify-content:center; margin-bottom:2px; }
+    .cell { width:40px; height:40px; margin:2px; border-radius:6px; border:1px solid #aaa; background:#fff; cursor:pointer; }
+    .cell.active { background:#4CAF50; }
+  </style>
+</head>
+<body>
+<h1>Medly Web Rama - Multi-Bar Sequencer</h1>
+
+<div id="controls">
+  <label>Instrumen: </label>
+  <select id="instrument">
+    <option value="piano">Piano</option>
+    <option value="bass">Bass</option>
+    <option value="bell">Bell</option>
+    <option value="organ">Organ</option>
+    <option value="lead">Lead</option>
+    <option value="synth">Synth Pad</option>
+    <option value="clap">Clap</option>
+    <option value="hihat">Hi-Hat</option>
+    <option value="kick">Kick</option>
+    <option value="string">String</option>
+  </select>
+
+  <button id="modeClick">Mode Klik</button>
+  <button id="modeSeq">Mode Sequencer</button>
+
+  <button id="playBtn">Play</button>
+  <button id="stopBtn">Stop</button>
+
+  <label>Tempo: </label><input type="number" id="tempo" value="120" min="30" max="300"> BPM
+
+  <br>
+  <label>Jumlah Bar: </label><input type="number" id="numBars" value="2" min="1" max="8">
+
+  <br>
+  <input type="text" id="patternName" placeholder="Nama Pattern">
+  <button id="savePatternBtn">Save Pattern</button>
+  <select id="loadPatternSelect"><option value="">-- Load Pattern --</option></select>
+  <button id="loadPatternBtn">Load</button>
+</div>
+
+<div id="clickGrid"></div>
+<div id="seqGrid" style="display:none;"></div>
+
+<script>
+const notes = ["do","re","mi","fa","so","la","si","do"];
+const freqs = { do:261.63, re:293.66, mi:329.63, fa:349.23, so:392.00, la:440.00, si:493.88 };
+const steps = 16;
+
+const clickGrid = document.getElementById('clickGrid');
+const seqGrid = document.getElementById('seqGrid');
+const instrumentSelect = document.getElementById('instrument');
+const playBtn = document.getElementById('playBtn');
+const stopBtn = document.getElementById('stopBtn');
+const tempoInput = document.getElementById('tempo');
+const numBarsInput = document.getElementById('numBars');
+const savePatternBtn = document.getElementById('savePatternBtn');
+const loadPatternBtn = document.getElementById('loadPatternBtn');
+const loadPatternSelect = document.getElementById('loadPatternSelect');
+const patternNameInput = document.getElementById('patternName');
+
+let pattern = [];
+let intervalId = null;
+let currentStep = 0;
+let currentBar = 0;
+
+// ------------------ Mode Klik ------------------
+notes.forEach(note => {
+  const btn = document.createElement('button');
+  btn.innerText = note.toUpperCase();
+  btn.onclick = () => playNote(note);
+  clickGrid.appendChild(btn);
+});
+
+// ------------------ Multi-Bar Sequencer ------------------
+function initPattern(){
+  const numBars = parseInt(numBarsInput.value);
+  pattern = [];
+  for(let b=0;b<numBars;b++){
+    const bar = [];
+    notes.forEach(()=> bar.push(new Array(steps).fill(false)));
+    pattern.push(bar);
+  }
+  renderSeqGrid();
+}
+
+// Render visual grid
+function renderSeqGrid(){
+  seqGrid.innerHTML = '';
+  pattern.forEach((bar, bIndex)=>{
+    const barTitle = document.createElement('div');
+    barTitle.innerText = "Bar "+(bIndex+1);
+    seqGrid.appendChild(barTitle);
+
+    bar.forEach((row,i)=>{
+      const rowDiv = document.createElement('div');
+      rowDiv.className = 'row';
+      row.forEach((cellVal,j)=>{
+        const cell = document.createElement('div');
+        cell.className = 'cell';
+        if(cellVal) cell.classList.add('active');
+        cell.onclick = ()=>{
+          pattern[bIndex][i][j] = !pattern[bIndex][i][j];
+          cell.classList.toggle('active');
+        }
+        rowDiv.appendChild(cell);
+      });
+      seqGrid.appendChild(rowDiv);
+    })
+  })
+}
+
+numBarsInput.onchange = initPattern;
+initPattern();
+
+// ------------------ Fungsi Main Nada ------------------
+function playNote(note){
+  const instr = instrumentSelect.value;
+  const freq = freqs[note];
+  const ctx = new (window.AudioContext || window.webkitAudioContext)();
+
+  function osc(type, frequency, duration, gain=0.5){
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.type = type; o.frequency.setValueAtTime(frequency, ctx.currentTime);
+    o.connect(g); g.connect(ctx.destination);
+    g.gain.setValueAtTime(gain, ctx.currentTime);
+    o.start(); o.stop(ctx.currentTime + duration);
+  }
+
+  function noise(duration){
+    const bufferSize = ctx.sampleRate*duration;
+    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for(let i=0;i<bufferSize;i++) data[i]=Math.random()*2-1;
+    const src = ctx.createBufferSource();
+    src.buffer=buffer; src.connect(ctx.destination); src.start();
+  }
+
+  switch(instr){
+    case "piano": osc("sine", freq, 0.3); break;
+    case "bass": osc("square", freq, 0.4); break;
+    case "bell": osc("triangle", freq, 0.3); break;
+    case "organ": osc("sawtooth", freq, 0.4); break;
+    case "lead": osc("square", freq, 0.2, 0.6); break;
+    case "synth": osc("triangle", freq, 0.5, 0.4); break;
+    case "clap": noise(0.1); break;
+    case "hihat": noise(0.05); break;
+    case "kick": osc("sine", 100, 0.2, 0.8); break;
+    case "string": osc("sawtooth", freq, 0.6, 0.3); break;
+  }
+}
+
+// ------------------ Play Sequencer ------------------
+function playPattern(){
+  const bpm = parseInt(tempoInput.value);
+  const interval = (60/bpm)/4*1000;
+
+  intervalId = setInterval(()=>{
+    const bar = pattern[currentBar];
+    notes.forEach((note,i)=>{
+      if(bar[i][currentStep]) playNote(note);
+    })
+    currentStep++;
+    if(currentStep>=steps){
+      currentStep=0;
+      currentBar++;
+      if(currentBar>=pattern.length) currentBar=0;
+    }
+  }, interval)
+}
+
+// ------------------ Kontrol ------------------
+playBtn.onclick = ()=>{ if(!intervalId) playPattern(); };
+stopBtn.onclick = ()=>{ clearInterval(intervalId); intervalId=null; currentStep=0; currentBar=0; };
+
+document.getElementById('modeClick').onclick = ()=>{
+  clickGrid.style.display='block';
+  seqGrid.style.display='none';
+}
+document.getElementById('modeSeq').onclick = ()=>{
+  clickGrid.style.display='none';
+  seqGrid.style.display='block';
+}
+
+// ------------------ Save & Load ------------------
+function updateLoadSelect(){
+  loadPatternSelect.innerHTML='<option value="">-- Load Pattern --</option>';
+  for(let key in localStorage){
+    if(key.startsWith('medly_pattern_')){
+      const option = document.createElement('option');
+      option.value=key;
+      option.innerText=key.replace('medly_pattern_','');
+      loadPatternSelect.appendChild(option);
+    }
+  }
+}
+
+savePatternBtn.onclick = ()=>{
+  const name = patternNameInput.value.trim();
+  if(!name){ alert("Masukkan nama pattern!"); return; }
+  localStorage.setItem('medly_pattern_'+name, JSON.stringify(pattern));
+  updateLoadSelect();
+  alert("Pattern tersimpan!");
+}
+
+loadPatternBtn.onclick = ()=>{
+  const key = loadPatternSelect.value;
+  if(!key){ alert("Pilih pattern!"); return; }
+  const data = JSON.parse(localStorage.getItem(key));
+  if(!data) return;
+  pattern = data;
+  renderSeqGrid();
+  alert("Pattern dimuat!");
+}
+
+updateLoadSelect();
+</script>
+</body>
+</html>
